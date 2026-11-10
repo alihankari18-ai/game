@@ -49,6 +49,10 @@ try{
     assert.equal(await page.locator('.plan-preview').getAttribute('data-edge'),'green');
     await page.reload();await page.locator('[data-action="park_plan_save"]:enabled').waitFor();assert.equal(await page.locator('.plan-preview').getAttribute('data-edge'),'green');
     await assertChoices();await page.screenshot({path:`test-results/${mobile?'mobile':'desktop'}-park-editor.png`,fullPage:true});
+    await click('park_trial_start');await page.locator('[data-action="park_trial_back"]:enabled').waitFor();await assertChoices();
+    assert.equal(await page.locator('#trial-pause').isDisabled(),true,'Reduced motion shows a static result');
+    assert.equal(await page.locator('.trial-stage').getAttribute('data-pedestrian'),'direct');
+    await click('park_trial_back');await page.locator('[data-action="park_plan_save"]:enabled').waitFor();
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Park editor: no horizontal overflow');
     if(mobile){
       await click('park_plan_back');await click('park_plan_open');assert.equal(await page.locator('.plan-preview').getAttribute('data-edge'),'empty');
@@ -94,9 +98,33 @@ try{
     await click('park_plan_open');await click('park_preset_green');await page.locator('[data-action="park_plan_save"]:enabled').waitFor();
     assert.match(await page.locator('.budget-bar').innerText(),/Бюджет қалдығы: 0/);
     assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.screenshot({path:`test-results/workshop-${width===1440?'desktop':'mobile'}.png`,fullPage:true});
+    await click('park_trial_start');await page.locator('[data-action="park_trial_back"]:enabled').waitFor();
+    assert.equal(await page.locator('.trial-stage').getAttribute('data-car'),'passes');
+    assert.equal(await page.locator('.trial-stage').getAttribute('data-cyclist'),'parks');
+    const svg=page.locator('#trial-svg');await page.locator('#trial-pause').click();
+    assert.equal(await svg.evaluate(e=>e.animationsPaused()),true);
+    const t=await svg.evaluate(e=>e.getCurrentTime());await page.waitForTimeout(150);assert.ok(Math.abs((await svg.evaluate(e=>e.getCurrentTime()))-t)<.05);
+    await page.locator('#trial-pause').click();assert.equal(await svg.evaluate(e=>e.animationsPaused()),false);
+    const matrices=await svg.locator('.trial-actor').evaluateAll(es=>es.map(e=>[e.getCTM().e,e.getCTM().f]));await page.waitForTimeout(300);
+    assert.notDeepEqual(await svg.locator('.trial-actor').evaluateAll(es=>es.map(e=>[e.getCTM().e,e.getCTM().f])),matrices,'Actors actually move');
+    await page.screenshot({path:`test-results/trial-${width===1440?'desktop':'mobile'}.png`,fullPage:true});
+    await page.reload();await page.locator('[data-action="park_trial_back"]:enabled').waitFor();
+    let trialExport=await page.evaluate(async()=>fetch('/api/export',{headers:{Authorization:'Bearer '+localStorage.getItem('ortaq-dev-v02-session')}}).then(r=>r.json()));
+    assert.equal(trialExport.events.filter(e=>e.event_type==='plan_trial_started').length,1,'Reload does not create a new trial');
+    await click('park_trial_back');await click('park_crossing_remove');await click('park_lighting_add');
+    // Space activates the same spatial control as a pointer or touch.
+    await page.locator('#edit-edge_parking:enabled').focus();await page.keyboard.press('Space');await page.locator('#edit-edge_parking[aria-pressed="true"]').waitFor();
+    await click('park_trial_start');await page.locator('[data-action="park_trial_back"]:enabled').waitFor();
+    assert.equal(await page.locator('.trial-stage').getAttribute('data-car'),'stops');assert.equal(await page.locator('.trial-stage').getAttribute('data-pedestrian'),'existing_crossing');assert.equal(await page.locator('.trial-stage').getAttribute('data-evening'),'lit');
+    await svg.evaluate(e=>e.setCurrentTime(7.9));await page.waitForTimeout(300);assert.equal(await page.locator('#trial-pause').isDisabled(),true);
+    await click('park_trial_replay');await page.locator('#trial-pause:enabled').waitFor();
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true,'Trial has no horizontal overflow');
+    await click('park_trial_back');await page.locator('[data-action="park_plan_save"]:enabled').waitFor();
+    assert.match(await page.locator('.time-preview').innerText(),/Уақыт қоры: 2 бірлік/);
     await click('park_plan_save');await page.locator('[data-action="park_end_confirm"]:enabled').waitFor();
     const ex=await page.evaluate(async()=>fetch('/api/export',{headers:{Authorization:'Bearer '+localStorage.getItem('ortaq-dev-v02-session')}}).then(r=>r.json()));
-    assert.equal(ex.session.park_plan_revision,1);assert.equal(ex.events.filter(e=>e.event_type==='plan_saved').length,1);
+    assert.equal(ex.events.filter(e=>e.event_type==='plan_trial_started').length,3);assert.equal(ex.session.park_plan_revision,1);assert.equal(ex.events.filter(e=>e.event_type==='plan_saved').length,1);
     await context.close();console.log(`${width}px: materials revisit, resource explanation, exit cancellation and zero-budget plan save passed.`);
   }
   const skipContext=await browser.newContext({viewport:{width:360,height:800}});const skip=await skipContext.newPage();skip.on('pageerror',e=>errors.push(e.message));

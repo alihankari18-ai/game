@@ -1,3 +1,5 @@
+import {trialScene} from './park-trial';
+import {workbench} from './park-workbench';
 import { components, modes, budgetUsed, candidatePlan } from '../shared/park-rules.mjs';
 
 type State = Record<string, any>;
@@ -36,7 +38,7 @@ export function renderPark(s:State){
   const btn=(label:string,action:string,kind='choice',selected=false,id='')=>{
     const reason=s.availability.blocked[action];
     let why=reasons[reason]||'';
-    if(action==='park_plan_save'&&reason==='prerequisite')why=budgetUsed(p.draft)>3?'Жиекке орын қалдырыңыз: қосымшаны алыңыз немесе дайын сызба таңдаңыз':'Сақтау үшін бір жиек нұсқасын таңдаңыз';
+    if(['park_plan_save','park_trial_start'].includes(action)&&reason==='prerequisite')why=budgetUsed(p.draft)>3?'Жиекке орын қалдырыңыз: қосымшаны алыңыз немесе дайын сызба таңдаңыз':'Алдымен бір жиек нұсқасын таңдаңыз';
     if(action==='park_hearing_submit'&&reason==='prerequisite')why='Қатысу тәсілін таңдаңыз';
     if(reason==='plan_budget')why=`Жобаға ${budgetUsed(candidatePlan(p.draft,action))} бірлік керек, шегі — 6. Қосымшаны алып тастауға болады.`;
     if(reason==='resource'){
@@ -45,7 +47,7 @@ export function renderPark(s:State){
       const money=mode?.money??0;
       why=[...(time>s.time?[`Уақыт: ${time} керек, сізде ${s.time}`]:[]),...(money>s.money?[`Жеке қаражат: ${money} керек, сізде ${s.money}`]:[])].join('. ');
     }
-    return `<button ${id?`id="${id}"`:''} class="${kind}${selected?' selected':''}" data-action="${action}" ${reason?'disabled':''} ${kind==='component'||kind==='mode-option'?`aria-pressed="${selected}"`:''}>${label}${why?`<small class="blocked-reason">${why}</small>`:''}</button>`;
+    return `<button ${id?`id="${id}"`:''} class="${kind}${selected?' selected':''}" data-action="${action}" ${reason?'disabled':''} ${kind.includes('component')||kind==='mode-option'?`aria-pressed="${selected}"`:''}>${label}${why?`<small class="blocked-reason">${why}</small>`:''}</button>`;
   };
   const overview=()=>`<div class="contributions"><div><span>Өзіңізде сақталған</span><strong>${p.revision?'Жоспар · '+p.revision+'-нұсқа':'Жоспар жоқ'}</strong></div><div><span>Көршілер тақтасы</span><strong>${p.group_snapshot?'Қосылды · '+p.group_snapshot.plan_revision+'-нұсқа':'Қосылған жоқ'}</strong></div><div><span>Ресми талқылау</span><strong>${p.hearing_snapshot?'Ұсынылды · '+p.hearing_snapshot.plan_revision+'-нұсқа':'Ұсынылған жоқ'}</strong></div></div>`;
   if(s.phase==='park_intro'||s.phase==='park_hub'){
@@ -64,13 +66,15 @@ export function renderPark(s:State){
     `<p class="small">Төмендегі сандар — жоба бюджетінен жұмсалатын бірліктер. Сіздің уақыт қорыңыз қазір: ${s.time} бірлік.</p><div class="cost-table">${Object.entries(items).map(([id,c])=>`<div><span>${c.label}<small>${c.description}</small></span><b>${c.cost}</b></div>`).join('')}</div><p class="small">Дәл бір жиек таңдалады. Қосымшалар ерікті, жалпы құн 6-дан аспайды. Бұл ойындық жоспар; нақты құрылыс сметасы емес.</p>${btn('Таңдауларға оралу →','park_materials_back','primary')}`;
   if(s.phase==='park_editor'){
     const used=budgetUsed(p.draft);
-    return title('СІЗДІҢ ЖОСПАР НҰСҚАҢЫЗ','Жиекті бірге ойластырайық.','Нұсқаларды ауыстырып көріңіз: карта бірден өзгереді. Өзгерту тегін; бұл әлі салынған нысан емес.')+
-      `${timePreview(savingCost,p.revision?'Қайта сақтау':'Алғаш сақтау')}<div class="budget-bar" aria-live="polite"><span>Жобаға бөлінді</span><strong>${used} / 6</strong><span>Бюджет қалдығы: <b>${6-used}</b></span></div><p class="small">Жоба бюджетінің қалдығы 0 болса да, жарамды жоспарды уақыт қорымен сақтауға болады.</p>${planPreview(p.draft)}
+    return title('СІЗДІҢ ЖОСПАР НҰСҚАҢЫЗ','Құрастыр. Байқап көр. Өзгерт.','Жиек түрін таңдаңыз. Сызбадағы белгілерді басып, нысанды қосыңыз немесе алып тастаңыз. Содан кейін тұрғындардың жолын байқап көріңіз.')+
+      `${timePreview(savingCost,p.revision?'Қайта сақтау':'Алғаш сақтау')}<div class="budget-bar" aria-live="polite"><span>Жобаға бөлінді</span><strong>${used} / 6</strong><span>Бюджет қалдығы: <b>${6-used}</b></span></div><p class="small">Жоба бюджетінің қалдығы 0 болса да, жарамды жоспарды уақыт қорымен сақтауға болады.</p>${workbench(s,btn,planPreview)}
+      <div class="trial-launch">${btn('▶ Жоспарды байқап көру <small>Тегін · сақтамай-ақ сынауға болады</small>','park_trial_start','primary')}<p class="small">Қысқа көріністе тұрғын, көлік пен велосипедшінің қозғалысы көрінеді. Бұл — ойындық модель, нақты қала болжамы емес. Сынау міндетті емес.</p></div>
       <div class="preset-row">${btn('Жасыл жиек <small>Дайын нұсқа · 6</small>','park_preset_green','preset')}${btn('Қысқа тұрақ <small>Дайын нұсқа · 6</small>','park_preset_parking','preset')}${btn('Аралас <small>Дайын нұсқа · 6</small>','park_preset_mixed','preset')}</div>
-      <h3 class="editor-heading">1. Бір жиек таңдаңыз</h3><div class="component-grid">${Object.entries(items).filter(([id])=>id.startsWith('edge_')).map(([id,c])=>btn(`<strong>${c.label}</strong><span>${c.description}</span><b>${c.cost} бюджет</b>`,'park_'+id,'component',p.draft.includes(id),'edit-'+id)).join('')}</div>
-      <h3 class="editor-heading">2. Қосымша нысандар</h3><div class="component-grid">${Object.entries(items).filter(([id])=>!id.startsWith('edge_')).map(([id,c])=>btn(`<strong>${p.draft.includes(id)?'✓ ':''}${c.label}</strong><span>${c.description}</span><b>${p.draft.includes(id)?'Алып тастау':'+ '+c.cost+' бюджет'}</b>`,'park_'+(id==='bike_rack'?'bike':id)+(p.draft.includes(id)?'_remove':'_add'),'component',p.draft.includes(id),'edit-'+id)).join('')}</div>
       <p class="small editor-note">${p.revision?'Сізде сақталған '+p.revision+'-нұсқа бар. Қайта сақтау уақыт алмайды.':'Алғашқы сақтау — '+s.profile.submit+' уақыт. Оған дейін ресурсыңыз жұмсалмайды.'}</p><div class="stack">${btn('Жоспарды сақтау →','park_plan_save','primary')}${btn('Сызбаны тазарту','park_plan_clear','quiet')}${btn('Өзгерістерді сақтамай қайту','park_plan_back','quiet')}</div>`;
   }
+  if(s.phase==='park_trial')return title('ЖОСПАРДЫҢ СЫНАҚ КӨРІНІСІ','Саябақта бір кеш.','Бұл көрініс қазіргі сызбаңызбен көрсетіледі. Жоспар әлі салынған жоқ. Қайтып, нысандарды өзгертіп салыстырыңыз.')+
+    trialScene(planPreview(p.trial.components,'Сыналып жатқан сызба'),p.trial.components)+
+    '<p class="small">Бұл — шартты ойын моделі. Көрініс нақты қозғалысты, қауіпсіздікті немесе тұрғындардың қолдауын болжауға арналмаған. Дұрыс жауап ұпайы берілмейді. Сынау уақыт қорын жұмсамайды.</p><div class="stack">'+btn('← Сызбаға қайтып, өзгерту','park_trial_back','primary')+btn('Көріністі қайта қосу','park_trial_replay','choice')+'</div>';
   if(s.phase==='park_group')return title('КӨРШІЛЕРДІҢ ОРТАҚ ТАҚТАСЫ','Нұсқаңызды бірге салыстырайық.','Көрші: «Жоспарыңызды ортақ тақтаға қоссаңыз, бірге салыстырамыз». Топтағы тұрғындар — ойын кейіпкерлері.')+
     planPreview(p.saved,`Жарияланатын ${p.revision}-нұсқа`)+timePreview(s.profile.group,'Топқа жариялау')+`<p>Уақыт тек жариялаған кезде жұмсалады.</p><div class="stack">${btn('Топ тақтасына қосу →','park_group_publish','primary')}${btn('Әзірге қайту','park_group_back','quiet')}</div>`;
   if(s.phase==='park_hearing')return title('РЕСМИ ТАЛҚЫЛАУ','Қай тәсілмен таныстырасыз?','Үш тәсіл де бір жоспарды ұсынуға мүмкіндік береді. Қатысу тәсілі ұсыныстың мақұлдануына кепілдік бермейді.')+

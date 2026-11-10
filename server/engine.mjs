@@ -1,9 +1,10 @@
+import { trialModel } from '../shared/park-trial.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomUUID, randomBytes, randomInt, createHash } from 'node:crypto';
 import { PARK_BUDGET, modes, budgetUsed, samePlan, validPlan, candidatePlan, editActions } from '../shared/park-rules.mjs';
 
 export const profiles = {digital:{time:4,info:0,submit:2,group:2,money:2},community:{time:4,info:1,submit:2,group:1,money:2},procedural:{time:3,info:1,submit:1,group:2,money:2},flexible:{time:5,info:1,submit:2,group:2,money:1}};
-export const versions = {schema_version:'0.4-park.2',script_version:'compact_0.1',game_version:'bus-park-prototype-0.2.1',study_phase:'dev',scope:'bus_park_prototype'};
+export const versions = {schema_version:'0.5-park.1',script_version:'compact_0.2',game_version:'bus-park-prototype-0.3.0',study_phase:'dev',scope:'bus_park_prototype'};
 export const priorities = ['access','duration','walk'];
 export const solutions = ['keep','connector','trial'];
 const uuid = x => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x);
@@ -38,7 +39,8 @@ export function createEngine(filename=':memory:', {assign=()=>randomInt(2)?'acti
       case 'park_intro':case 'park_hub':return ['park_plan_open','park_materials','park_share','park_group_open','park_hearing_open',s.park.revision?'park_end_confirm':'park_exit_open'];
       case 'park_exit':return ['park_exit_back','park_end_confirm'];
       case 'park_materials':return ['park_materials_back'];
-      case 'park_editor':return [...editActions(s.park.draft),'park_plan_save','park_plan_back'];
+      case 'park_editor':return [...editActions(s.park.draft),'park_trial_start','park_plan_save','park_plan_back'];
+      case 'park_trial':return ['park_trial_replay','park_trial_back'];
       case 'park_group':return ['park_group_publish','park_group_back'];
       case 'park_hearing':return ['park_mode_online','park_mode_walk','park_mode_paid','park_hearing_submit','park_hearing_back'];
       case 'park_result':return ['park_finish_prototype'];
@@ -58,6 +60,7 @@ export function createEngine(filename=':memory:', {assign=()=>randomInt(2)?'acti
         }
         if(action==='park_materials'&&!p.info&&s.time<profile.info)blocked[action]='resource';
         if(action==='park_share'&&p.shared)blocked[action]='already_completed';
+        if(action==='park_trial_start'&&!validPlan(p.draft))blocked[action]='prerequisite';
         if(action==='park_plan_save'){
           if(!validPlan(p.draft))blocked[action]='prerequisite';
           else if(!p.revision&&s.time<profile.submit)blocked[action]='resource';
@@ -100,6 +103,13 @@ export function createEngine(filename=':memory:', {assign=()=>randomInt(2)?'acti
     const p=s.park;requireRule(p&&!p.completed||action==='park_finish_prototype');
     if(action==='park_plan_open')s.phase='park_editor';
     else if(s.phase==='park_editor'&&editActions(p.draft).includes(action))changePlan(s,candidatePlan(p.draft,action),action);
+    else if(action==='park_trial_start'||action==='park_trial_replay'){
+      requireRule(validPlan(p.draft));
+      const model=trialModel(p.draft);
+      p.trial={trial_id:randomUUID(),trial_seq:(p.trial?.trial_seq??0)+1,plan_id:p.plan_id,edit_seq:p.edit_seq,components:[...p.draft],budget_used:budgetUsed(p.draft),model_version:model.model_version};
+      s.phase='park_trial';
+      event(s,'plan_trial_started',{...p.trial,action_id:action,decision_instance_id:s.decision.id});
+    }else if(action==='park_trial_back')s.phase='park_editor';
     else if(action==='park_plan_back'){changePlan(s,p.saved,action);s.phase='park_hub';}
     else if(action==='park_plan_save'){
       requireRule(validPlan(p.draft));

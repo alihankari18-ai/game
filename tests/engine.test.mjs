@@ -1,3 +1,4 @@
+import {trialModel,TRIAL_MODEL} from '../shared/park-trial.mjs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -139,4 +140,31 @@ test('ending without a plan requires confirmation; cancel and reload preserve re
   assert.equal(p.e.export(p.token).session.park_group_contribution,null);p.act('park_exit_back');assert.equal(p.s.phase,'park_hub');
   assert.equal(p.s.time,3);assert.ok(p.s.availability.available.includes('park_plan_open'));
   p.act('park_exit_open');p.act('park_end_confirm');assert.equal(p.e.export(p.token).session.park_group_contribution,0);assert.equal(p.s.park.completed,true);assert.equal(p.s.time,3);p.e.close();
+});
+
+
+test('park trial is optional, free, idempotent and snapshots the unsaved draft',()=>{
+  const p=parkPlayer('procedural');p.act('park_plan_open');assert.equal(p.s.availability.blocked.park_trial_start,'prerequisite');assert.throws(()=>p.act('park_trial_start'));
+  p.act('park_preset_green');p.view();const before=p.s.time;
+  const body={request_id:randomUUID(),revision:p.s.revision,type:'action',action:'park_trial_start',decision_id:p.s.decision.id,active_ms:0};
+  const first=p.e.command(p.token,body);assert.deepEqual(p.e.command(p.token,body),first);assert.equal(first.time,before);assert.equal(first.park.revision,0);
+  assert.equal(p.events().filter(e=>e.event_type==='plan_trial_started').length,1);assert.equal(p.e.state(p.token).phase,'park_trial');
+  // Resynchronise this helper after the direct request, as a client reload would.
+  const act=a=>{let s=p.e.state(p.token);s=p.e.command(p.token,{request_id:randomUUID(),revision:s.revision,type:'view'});return p.e.command(p.token,{request_id:randomUUID(),revision:s.revision,type:'action',action:a,decision_id:s.decision.id,active_ms:0});};
+  const snapshot=structuredClone(first.park.trial);act('park_trial_back');act('park_crossing_remove');act('park_lighting_add');
+  const second=act('park_trial_start');assert.equal(second.park.trial.trial_seq,2);assert.notEqual(second.park.trial.trial_id,snapshot.trial_id);assert.equal(second.time,before);assert.equal(second.primary,0);
+  const events=p.events().filter(e=>e.event_type==='plan_trial_started');assert.deepEqual(events[0].payload.components,snapshot.components);assert.equal(events[1].payload.model_version,TRIAL_MODEL);
+  assert.equal(events[1].payload.edit_seq,second.park.edit_seq);assert.equal(p.events().filter(e=>e.event_type==='plan_saved').length,0);
+  act('park_trial_replay');assert.equal(p.events().filter(e=>e.event_type==='plan_trial_started').length,3);
+  act('park_trial_back');const saved=act('park_plan_save');assert.equal(saved.time,before-1);assert.equal(saved.park.revision,1);p.e.close();
+});
+
+test('illustrative model covers all valid plans and changes the relevant visible paths',()=>{
+  const keys=Object.keys(components);let count=0;
+  for(let mask=0;mask<(1<<keys.length);mask++){
+    const values=keys.filter((_,i)=>mask&(1<<i));if(!validPlan(values))continue;count++;
+    const m=trialModel(values);assert.equal(m.notes.length,4);assert.equal(m.pedestrian,values.includes('crossing')?'direct':'existing_crossing');
+    assert.equal(m.car,values.includes('edge_green')?'passes':'stops');assert.equal(m.cyclist,values.includes('bike_rack')?'parks':'continues');assert.equal(m.evening,values.includes('lighting')?'lit':'unlit');
+  }
+  assert.equal(count,16);assert.throws(()=>trialModel([]));assert.throws(()=>trialModel(['edge_mixed','crossing','lighting']));
 });
