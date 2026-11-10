@@ -78,9 +78,30 @@ try{
     const deleted=await context.request.get('http://127.0.0.1:8799/api/export',{headers:{Authorization:'Bearer '+oldToken}});assert.equal(deleted.status(),401);
     await context.close();console.log(`${mobile?'Mobile 390px':'Desktop 1440px'}: bus + park, editor, budget, reload, publication snapshots, export and deletion passed.`);
   }
+  for(const width of [1440,390]){
+    const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();page.on('pageerror',e=>errors.push(e.message));
+    await page.goto('http://127.0.0.1:8799');await page.locator('#adult').check();await page.locator('#consent').check();await page.locator('#start').click();
+    const click=async a=>page.locator(`[data-action="${a}"]:enabled`).click();
+    for(const a of ['choose_procedural','bus_begin','bus_pre_pass','bus_reply_continue','bus_end_confirm','clarity_skip','bus_continue_park','park_share','park_materials','park_materials_back','park_materials','park_materials_back'])await click(a);
+    await page.locator('[data-action="park_plan_open"]:enabled').waitFor();
+    assert.match(await page.locator('.time-preview').innerText(),/Уақыт қоры: 2 бірлік/);
+    assert.match(await page.locator('.time-preview').innerText(),/Алғаш сақтау: 1 бірлік/);
+    assert.match(await page.locator('.time-preview').innerText(),/Одан кейін қалады: 1 бірлік/);
+    assert.equal(await page.locator('[data-action="park_group_open"]').isDisabled(),true);
+    assert.match(await page.locator('[data-action="park_group_open"]').innerText(),/Жеке жоспар сақталғаннан кейін ашылады/);
+    await page.screenshot({path:`test-results/resource-clarity-${width===1440?'desktop':'mobile'}.png`,fullPage:true});
+    await click('park_exit_open');await page.reload();await click('park_exit_back');
+    await click('park_plan_open');await click('park_preset_green');await page.locator('[data-action="park_plan_save"]:enabled').waitFor();
+    assert.match(await page.locator('.budget-bar').innerText(),/Бюджет қалдығы: 0/);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await click('park_plan_save');await page.locator('[data-action="park_end_confirm"]:enabled').waitFor();
+    const ex=await page.evaluate(async()=>fetch('/api/export',{headers:{Authorization:'Bearer '+localStorage.getItem('ortaq-dev-v02-session')}}).then(r=>r.json()));
+    assert.equal(ex.session.park_plan_revision,1);assert.equal(ex.events.filter(e=>e.event_type==='plan_saved').length,1);
+    await context.close();console.log(`${width}px: materials revisit, resource explanation, exit cancellation and zero-budget plan save passed.`);
+  }
   const skipContext=await browser.newContext({viewport:{width:360,height:800}});const skip=await skipContext.newPage();skip.on('pageerror',e=>errors.push(e.message));
   await skip.goto('http://127.0.0.1:8799');await skip.locator('#adult').check();await skip.locator('#consent').check();await skip.locator('#start').click();
-  for(const action of ['choose_digital','bus_begin','bus_pre_pass','bus_reply_continue','bus_end_confirm','clarity_skip','bus_continue_park','park_end_confirm','park_finish_prototype'])await skip.locator(`[data-action="${action}"]`).click();
+  for(const action of ['choose_digital','bus_begin','bus_pre_pass','bus_reply_continue','bus_end_confirm','clarity_skip','bus_continue_park','park_exit_open','park_end_confirm','park_finish_prototype'])await skip.locator(`[data-action="${action}"]`).click();
   await skip.locator('#ending-export:enabled').waitFor();const skipped=await skip.evaluate(async()=>fetch('/api/export',{headers:{Authorization:'Bearer '+localStorage.getItem('ortaq-dev-v02-session')}}).then(r=>r.json()));
   assert.equal(skipped.session.bus_primary,0);assert.equal(skipped.session.park_group_contribution,0);assert.equal(skipped.session.park_hearing_contribution,0);assert.equal(skipped.session.park_plan_revision,0);
   assert.equal(await skip.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await skipContext.close();console.log('360px: both episodes can be completed without participating.');

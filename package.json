@@ -1,5 +1,5 @@
 {
-  "name": "ortaq-qala", "version": "0.2.0", "private": true, "type": "module",
+  "name": "ortaq-qala", "version": "0.2.1", "private": true, "type": "module",
   "engines": {"node": ">=24.0.0"},
   "scripts": {"dev": "node scripts/dev.mjs", "build": "tsc --noEmit && vite build", "start": "node server/index.mjs", "test": "node --test tests/engine.test.mjs", "test:browser": "node tests/browser.mjs"},
   "dependencies": {"phaser": "^3.90.0"},

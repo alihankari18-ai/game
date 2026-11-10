@@ -3,7 +3,7 @@ import { randomUUID, randomBytes, randomInt, createHash } from 'node:crypto';
 import { PARK_BUDGET, modes, budgetUsed, samePlan, validPlan, candidatePlan, editActions } from '../shared/park-rules.mjs';
 
 export const profiles = {digital:{time:4,info:0,submit:2,group:2,money:2},community:{time:4,info:1,submit:2,group:1,money:2},procedural:{time:3,info:1,submit:1,group:2,money:2},flexible:{time:5,info:1,submit:2,group:2,money:1}};
-export const versions = {schema_version:'0.4-park.1',script_version:'compact_0.1',game_version:'bus-park-prototype-0.2.0',study_phase:'dev',scope:'bus_park_prototype'};
+export const versions = {schema_version:'0.4-park.2',script_version:'compact_0.1',game_version:'bus-park-prototype-0.2.1',study_phase:'dev',scope:'bus_park_prototype'};
 export const priorities = ['access','duration','walk'];
 export const solutions = ['keep','connector','trial'];
 const uuid = x => typeof x === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(x);
@@ -35,7 +35,8 @@ export function createEngine(filename=':memory:', {assign=()=>randomInt(2)?'acti
       case 'proposal':return [...priorities.map(x=>'bus_priority_'+x),...solutions.map(x=>'bus_solution_'+x),'bus_proposal_save','bus_proposal_submit'];
       case 'reflection':return ['clarity_1','clarity_2','clarity_3','clarity_4','clarity_5','clarity_skip'];
       case 'bus_result':return ['bus_continue_park'];
-      case 'park_intro':case 'park_hub':return ['park_plan_open','park_materials','park_share','park_group_open','park_hearing_open','park_end_confirm'];
+      case 'park_intro':case 'park_hub':return ['park_plan_open','park_materials','park_share','park_group_open','park_hearing_open',s.park.revision?'park_end_confirm':'park_exit_open'];
+      case 'park_exit':return ['park_exit_back','park_end_confirm'];
       case 'park_materials':return ['park_materials_back'];
       case 'park_editor':return [...editActions(s.park.draft),'park_plan_save','park_plan_back'];
       case 'park_group':return ['park_group_publish','park_group_back'];
@@ -128,7 +129,9 @@ export function createEngine(filename=':memory:', {assign=()=>randomInt(2)?'acti
       if(mode.money){const before=s.money;s.money-=mode.money;event(s,'resource_changed',{resource:'money',reason:'action',before,after:s.money,delta:-mode.money,action_id:action});}
       p.hearing_snapshot={...snapshot(p),participation_mode:mode.participation_mode,travel_mode:mode.travel_mode};s.phase='park_hub';
       event(s,'formal_action_completed',{action_instance_id:p.hearing_id,channel:'hearing',...p.hearing_snapshot});
-    }else if(action==='park_end_confirm'){
+    }else if(action==='park_exit_open')s.phase='park_exit';
+    else if(action==='park_exit_back')s.phase='park_hub';
+    else if(action==='park_end_confirm'){
       p.completed=true;s.phase='park_result';event(s,'scenario_completed',{scenario_id:'park',outcome_code:'consultation_complete'});
     }else if(action==='park_finish_prototype'){s.prototype_complete=true;s.phase='ending';}
     else throw new RuleError('Белгісіз саябақ әрекеті.');

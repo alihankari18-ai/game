@@ -1,9 +1,9 @@
-import { components, modes, budgetUsed } from '../shared/park-rules.mjs';
+import { components, modes, budgetUsed, candidatePlan } from '../shared/park-rules.mjs';
 
 type State = Record<string, any>;
 const items = components as Record<string,{cost:number,label:string,description:string}>;
 const reasons:Record<string,string> = {
-  prerequisite:'Алдымен жоспарды сақтаңыз',resource:'Уақыт немесе жеке қаражат жетпейді',
+  prerequisite:'Жеке жоспар сақталғаннан кейін ашылады',resource:'Қор жеткіліксіз',
   already_completed:'Орындалды',already_selected:'Таңдалған',plan_budget:'6 бірліктік бюджеттен асады'
 };
 const title=(tag:string,heading:string,text='')=>`<span class="eyebrow">${tag}</span><h2>${heading}</h2>${text?`<p>${text}</p>`:''}`;
@@ -30,40 +30,52 @@ export function planPreview(values:string[],label='Сіздің жоспар н�
 }
 export function renderPark(s:State){
   const p=s.park;
+  const savingCost=p.revision?0:s.profile.submit;
+  const timePreview=(cost:number,label:string)=>`<div class="time-preview"><strong>Уақыт қоры: ${s.time} бірлік</strong><span>${label}: ${cost} бірлік</span><b>${s.time>=cost?'Одан кейін қалады: '+(s.time-cost):'Қосымша қажет: '+(cost-s.time)} бірлік</b></div>`;
+  const guide=`<details class="resource-guide"><summary>Үш қор қалай жұмыс істейді?</summary><p><b>Уақыт қоры</b> — кейіпкердің осы эпизодтағы істеріне арналған шартты бірліктер. Бұл таймер емес. Оқу ұзақтығы қорды азайтпайды; құны көрсетілген әрекет жұмсайды. Күткенде қор толмайды.</p><p><b>Жоба бюджеті — 6 бірлік.</b> Онымен саябақтың нысандарын жоспарлайсыз. Бюджетті түгел қолдансаңыз да, уақыт жетсе жоспарды сақтай аласыз.</p><p><b>Жеке қаражат</b> — тек ақылы сапарға арналған. Жоспар құрастыруға ақша алынбайды.</p></details>`;
   const btn=(label:string,action:string,kind='choice',selected=false,id='')=>{
     const reason=s.availability.blocked[action];
     let why=reasons[reason]||'';
-    if(action==='park_plan_save'&&reason==='prerequisite')why='Бір жиек нұсқасын таңдаңыз';
+    if(action==='park_plan_save'&&reason==='prerequisite')why=budgetUsed(p.draft)>3?'Жиекке орын қалдырыңыз: қосымшаны алыңыз немесе дайын сызба таңдаңыз':'Сақтау үшін бір жиек нұсқасын таңдаңыз';
     if(action==='park_hearing_submit'&&reason==='prerequisite')why='Қатысу тәсілін таңдаңыз';
+    if(reason==='plan_budget')why=`Жобаға ${budgetUsed(candidatePlan(p.draft,action))} бірлік керек, шегі — 6. Қосымшаны алып тастауға болады.`;
+    if(reason==='resource'){
+      const mode=action.startsWith('park_mode_')?(modes as Record<string,any>)[action.slice(10)]:action==='park_hearing_submit'?(modes as Record<string,any>)[p.mode]:null;
+      const time=mode?mode.time:action==='park_materials'?s.profile.info:action==='park_group_publish'?s.profile.group:savingCost;
+      const money=mode?.money??0;
+      why=[...(time>s.time?[`Уақыт: ${time} керек, сізде ${s.time}`]:[]),...(money>s.money?[`Жеке қаражат: ${money} керек, сізде ${s.money}`]:[])].join('. ');
+    }
     return `<button ${id?`id="${id}"`:''} class="${kind}${selected?' selected':''}" data-action="${action}" ${reason?'disabled':''} ${kind==='component'||kind==='mode-option'?`aria-pressed="${selected}"`:''}>${label}${why?`<small class="blocked-reason">${why}</small>`:''}</button>`;
   };
   const overview=()=>`<div class="contributions"><div><span>Өзіңізде сақталған</span><strong>${p.revision?'Жоспар · '+p.revision+'-нұсқа':'Жоспар жоқ'}</strong></div><div><span>Көршілер тақтасы</span><strong>${p.group_snapshot?'Қосылды · '+p.group_snapshot.plan_revision+'-нұсқа':'Қосылған жоқ'}</strong></div><div><span>Ресми талқылау</span><strong>${p.hearing_snapshot?'Ұсынылды · '+p.hearing_snapshot.plan_revision+'-нұсқа':'Ұсынылған жоқ'}</strong></div></div>`;
   if(s.phase==='park_intro'||s.phase==='park_hub'){
     const intro=s.phase==='park_intro';
-    return title('02 · САМАЛ САЯБАҒЫ',intro?'Бір жиек. Бірнеше мүдде.':'Жоспарыңыз қайда барады?',intro?'Саябақ жиегінің бір бөлігін тұраққа бейімдеу ұсынылды. Орталық ағаштар сақталады. Дау — жиектің қалай пайдаланылатынында.':'Жоспарды өзіңізде қалдыруға, көршілермен бөлісуге немесе ресми талқылауға ұсынуға болады.')+
-      (intro?`<div class="news-card"><span class="eyebrow">КЕЛЕСІ АПТА · №18 ЖАҢАЛЫҒЫ</span><p>Бір айлық сынақ ұсынылды; аудан аялдамасы сынақ кезінде сақталады.${s.submitted?' Жеке ұсынысыңыз материалдарда тіркелген.':''}</p></div><div class="voices"><p>«Кешке тынығатын орын азаймаса екен».</p><p>«Көліктер жаяу жолға жиналмайтын орын керек».</p><p>«Ал кіреберісті ашық қалдырайық».</p></div><p class="aside">Чат әкімшісі: «Бәрі керек деген нұсқаның бюджеті әзірге табылмады».</p><p>Жоба бюджеті — <strong>6 бірлік</strong>. Ол сіздің жеке ақшаңыздан бөлек. Жоспар құру міндетті емес.</p>`:overview())+
+    return title('02 · САМАЛ САЯБАҒЫ',intro?'Бір жиек. Бірнеше мүдде.':p.revision?'Жоспарыңыз қайда барады?':'Жоспарды осы жерден бастаңыз.',intro?'Саябақ жиегінің бір бөлігін тұраққа бейімдеу ұсынылды. Орталық ағаштар сақталады. Дау — жиектің қалай пайдаланылатынында.':p.revision?'Жоспарды өзіңізде қалдыруға, көршілермен бөлісуге немесе ресми талқылауға ұсынуға болады.':'Жоспар редакторында өз сызбаңызды құрастырып, сақтай аласыз. Жоспарсыз жалғастыруға да болады.')+
+      (intro?`<div class="news-card"><span class="eyebrow">КЕЛЕСІ АПТА · №18 ЖАҢАЛЫҒЫ</span><p>Бір айлық сынақ ұсынылды; аудан аялдамасы сынақ кезінде сақталады.${s.submitted?' Жеке ұсынысыңыз материалдарда тіркелген.':''}</p><p><b>Осы эпизодқа ${s.profile.time} уақыт бірлігі берілді.</b> Қазір: ${s.time}. Автобустағы шығын саябаққа көшірілмейді.</p></div><div class="voices"><p>«Кешке тынығатын орын азаймаса екен».</p><p>«Көліктер жаяу жолға жиналмайтын орын керек».</p><p>«Ал кіреберісті ашық қалдырайық».</p></div><p class="aside">Чат әкімшісі: «Бәрі керек деген нұсқаның бюджеті әзірге табылмады».</p>`:p.revision?overview():'')+
       (p.revision?planPreview(p.saved):'')+
-      `<div class="stack">${btn(p.revision?'Жоспарды өзгерту <small>Өзгерту және қайта сақтау тегін</small>':`Жоспар құрастыру <small>Алғаш сақтау — ${s.profile.submit} уақыт</small>`,'park_plan_open','primary')}
-      ${btn(`Материалдар <small>${p.info?0:s.profile.info} уақыт · сызба және шығындар</small>`,'park_materials')}
+      `<section class="planning-step" aria-label="Жоспар жасау"><span class="eyebrow">1 · ЖЕКЕ ЖОСПАР</span><h3>${p.revision?'Жоспарыңызды өзгерте аласыз':'Редакторды ашып, сызба құрастырыңыз'}</h3><p>Редакторды ашу және нұсқаларды сынау тегін. Жоба нысандарына бөлек 6 бірліктік бюджет беріледі.</p>${timePreview(savingCost,p.revision?'Қайта сақтау':'Алғаш сақтау')}${btn(p.revision?'Жоспар редакторын қайта ашу →':'Жоспар редакторын ашу →','park_plan_open','primary')}</section>${guide}
+      <div class="stack">${btn(`Материалдарды ашу <small>${p.info?'Қайта ашу тегін':`Алғаш ашу — ${s.profile.info} уақыт бірлігі`} · сызба және шығындар</small>`,'park_materials')}
       ${btn(`Хабарды аудан чатына бөлісу <small>${p.shared?'Бөлісілді':'Тегін · бір рет'}</small>`,'park_share')}
+      <h3 class="editor-heading">2 · Сақталған жоспарды ұсыну</h3><p class="small">Жоспар жасаған соң осы екі жол ашылады. Ұсыну міндетті емес.</p>
       ${btn(`Топ тақтасына қосу <small>${s.profile.group} уақыт · нақты үлес</small>`,'park_group_open')}${btn('Ресми талқылауда таныстыру <small>1–2 уақыт · сапар тәсілі таңдалады</small>','park_hearing_open')}
-      ${btn(p.revision?'Осы нәтижемен эпизодты аяқтау →':'Жоспар құрмай, эпизодты аяқтау →','park_end_confirm','quiet')}</div>`;
+      ${btn(p.revision?'Осы нәтижемен эпизодты аяқтау →':'Жеке жоспарсыз жалғастыру →',p.revision?'park_end_confirm':'park_exit_open','quiet')}</div>`;
   }
   if(s.phase==='park_materials')return title('САЯБАҚ · МАТЕРИАЛДАР','Нені өзгертуге болады?','Орталық ағаштар мен негізгі жаяу жол қалады. Таңдау тек саябақ жиегіне және қосымша нысандарға қатысты.')+
-    `<div class="cost-table">${Object.entries(items).map(([id,c])=>`<div><span>${c.label}<small>${c.description}</small></span><b>${c.cost}</b></div>`).join('')}</div><p class="small">Дәл бір жиек таңдалады. Қосымшалар ерікті, жалпы құн 6-дан аспайды. Бұл ойындық жоспар; нақты құрылыс сметасы емес.</p>${btn('Жоспарға оралу →','park_materials_back','primary')}`;
+    `<p class="small">Төмендегі сандар — жоба бюджетінен жұмсалатын бірліктер. Сіздің уақыт қорыңыз қазір: ${s.time} бірлік.</p><div class="cost-table">${Object.entries(items).map(([id,c])=>`<div><span>${c.label}<small>${c.description}</small></span><b>${c.cost}</b></div>`).join('')}</div><p class="small">Дәл бір жиек таңдалады. Қосымшалар ерікті, жалпы құн 6-дан аспайды. Бұл ойындық жоспар; нақты құрылыс сметасы емес.</p>${btn('Таңдауларға оралу →','park_materials_back','primary')}`;
   if(s.phase==='park_editor'){
     const used=budgetUsed(p.draft);
     return title('СІЗДІҢ ЖОСПАР НҰСҚАҢЫЗ','Жиекті бірге ойластырайық.','Нұсқаларды ауыстырып көріңіз: карта бірден өзгереді. Өзгерту тегін; бұл әлі салынған нысан емес.')+
-      `<div class="budget-bar" aria-live="polite"><span>Жоба бюджеті</span><strong>${used} / 6</strong><span>Қалды: <b>${6-used}</b></span></div>${planPreview(p.draft)}
+      `${timePreview(savingCost,p.revision?'Қайта сақтау':'Алғаш сақтау')}<div class="budget-bar" aria-live="polite"><span>Жобаға бөлінді</span><strong>${used} / 6</strong><span>Бюджет қалдығы: <b>${6-used}</b></span></div><p class="small">Жоба бюджетінің қалдығы 0 болса да, жарамды жоспарды уақыт қорымен сақтауға болады.</p>${planPreview(p.draft)}
       <div class="preset-row">${btn('Жасыл жиек <small>Дайын нұсқа · 6</small>','park_preset_green','preset')}${btn('Қысқа тұрақ <small>Дайын нұсқа · 6</small>','park_preset_parking','preset')}${btn('Аралас <small>Дайын нұсқа · 6</small>','park_preset_mixed','preset')}</div>
       <h3 class="editor-heading">1. Бір жиек таңдаңыз</h3><div class="component-grid">${Object.entries(items).filter(([id])=>id.startsWith('edge_')).map(([id,c])=>btn(`<strong>${c.label}</strong><span>${c.description}</span><b>${c.cost} бюджет</b>`,'park_'+id,'component',p.draft.includes(id),'edit-'+id)).join('')}</div>
       <h3 class="editor-heading">2. Қосымша нысандар</h3><div class="component-grid">${Object.entries(items).filter(([id])=>!id.startsWith('edge_')).map(([id,c])=>btn(`<strong>${p.draft.includes(id)?'✓ ':''}${c.label}</strong><span>${c.description}</span><b>${p.draft.includes(id)?'Алып тастау':'+ '+c.cost+' бюджет'}</b>`,'park_'+(id==='bike_rack'?'bike':id)+(p.draft.includes(id)?'_remove':'_add'),'component',p.draft.includes(id),'edit-'+id)).join('')}</div>
       <p class="small editor-note">${p.revision?'Сізде сақталған '+p.revision+'-нұсқа бар. Қайта сақтау уақыт алмайды.':'Алғашқы сақтау — '+s.profile.submit+' уақыт. Оған дейін ресурсыңыз жұмсалмайды.'}</p><div class="stack">${btn('Жоспарды сақтау →','park_plan_save','primary')}${btn('Сызбаны тазарту','park_plan_clear','quiet')}${btn('Өзгерістерді сақтамай қайту','park_plan_back','quiet')}</div>`;
   }
   if(s.phase==='park_group')return title('КӨРШІЛЕРДІҢ ОРТАҚ ТАҚТАСЫ','Нұсқаңызды бірге салыстырайық.','Көрші: «Жоспарыңызды ортақ тақтаға қоссаңыз, бірге салыстырамыз». Топтағы тұрғындар — ойын кейіпкерлері.')+
-    planPreview(p.saved,`Жарияланатын ${p.revision}-нұсқа`)+`<p>Толық құны: <strong>${s.profile.group} уақыт</strong>. Қазір ${s.time} уақыт бар. Тек жариялаған кезде жұмсалады.</p><div class="stack">${btn('Топ тақтасына қосу →','park_group_publish','primary')}${btn('Әзірге қайту','park_group_back','quiet')}</div>`;
+    planPreview(p.saved,`Жарияланатын ${p.revision}-нұсқа`)+timePreview(s.profile.group,'Топқа жариялау')+`<p>Уақыт тек жариялаған кезде жұмсалады.</p><div class="stack">${btn('Топ тақтасына қосу →','park_group_publish','primary')}${btn('Әзірге қайту','park_group_back','quiet')}</div>`;
   if(s.phase==='park_hearing')return title('РЕСМИ ТАЛҚЫЛАУ','Қай тәсілмен таныстырасыз?','Үш тәсіл де бір жоспарды ұсынуға мүмкіндік береді. Қатысу тәсілі ұсыныстың мақұлдануына кепілдік бермейді.')+
     planPreview(p.saved,`Ұсынылатын ${p.revision}-нұсқа`)+`<div class="stack">${Object.entries(modes).map(([key,m])=>btn(`<strong>${m.label}</strong><span>${m.time} уақыт · ${m.money?m.money+' жеке қаражат':'ақшалай шығын жоқ'}</span>`,'park_mode_'+key,'mode-option',p.mode===key)).join('')}</div><p class="small editor-note">${p.mode?`Таңдалғаны: ${(modes as Record<string,any>)[p.mode].label}. Толық құны жоғарыда көрсетілген.`:'Ешбір тәсіл алдын ала таңдалмаған.'} Қазір: ${s.time} уақыт, ${s.money} жеке қаражат.</p><div class="stack">${btn('Жоспарды таныстыру →','park_hearing_submit','primary')}${btn('Әзірге қайту','park_hearing_back','quiet')}</div>`;
   if(s.phase==='park_result')return title('САЯБАҚ · ЭПИЗОД АЯҚТАЛДЫ','Талқылау аяқталды, шешім алда.','Қала тобы қосымша бағалау жасайды. Түпкілікті құрылыс шешімі кейін жарияланады. Картада сіздің ұсынысыңыз ғана бейнеленген.')+overview()+(p.revision?planPreview(p.saved):'<div class="note">Сіз жоспар құрмай жалғастыруды таңдадыңыз.</div>')+`<p class="small">${p.shared?'Аудан чатына хабар бөлістіңіз.':'Аудан чатына хабар бөліскен жоқсыз.'} Бұл жоспар ұсынудан бөлек әрекет.</p>${btn('Екі эпизодтың қорытындысы →','park_finish_prototype','primary')}`;
+  if(s.phase==='park_exit')return title('ЭПИЗОДТЫ АЯҚТАУ','Жеке жоспарсыз жалғастырасыз ба?','Жеке жоспар әлі сақталмаған. Эпизодты осылай аяқтауға немесе таңдауларға оралуға болады.')+timePreview(savingCost,'Жоспарды алғаш сақтау')+`<div class="stack">${btn('Таңдауларға оралу','park_exit_back')}${btn('Жоспарсыз аяқтау','park_end_confirm')}</div>`;
   return '';
 }

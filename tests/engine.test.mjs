@@ -119,5 +119,24 @@ test('resource shortage blocks paid travel/materials and publishing, never free 
 test('park sharing is once-only; materials charge once; interrupted absence stays unknown',()=>{
   const p=parkPlayer('procedural');p.act('park_share');assert.throws(()=>p.act('park_share'));p.act('park_materials');assert.equal(p.s.time,2);p.act('park_materials_back');p.act('park_materials');assert.equal(p.s.time,2);p.act('park_materials_back');
   const before=p.e.export(p.token);assert.equal(before.session.park_group_contribution,null);assert.equal(before.session.park_hearing_contribution,null);assert.equal(before.session.bus_primary,0);
-  p.act('park_end_confirm');assert.equal(p.e.export(p.token).session.park_group_contribution,0);assert.equal(p.s.park.revision,0);assert.equal(parkEvents(p).filter(e=>e.event_type==='plan_saved').length,0);p.e.close();
+  p.act('park_exit_open');p.act('park_end_confirm');assert.equal(p.e.export(p.token).session.park_group_contribution,0);assert.equal(p.s.park.revision,0);assert.equal(parkEvents(p).filter(e=>e.event_type==='plan_saved').length,0);p.e.close();
+});
+
+
+test('procedural: returning from materials leaves enough time for a full-budget plan',()=>{
+  const p=player('generic');p.act('choose_procedural');p.act('bus_begin');p.act('bus_pre_pass');p.act('bus_reply_continue');
+  p.act('bus_proposal_open');p.act('bus_priority_walk');p.act('bus_solution_trial');p.act('bus_proposal_submit');p.act('bus_materials');p.act('bus_materials_back');assert.equal(p.s.time,1);
+  p.act('bus_end_confirm');p.act('clarity_skip');p.act('bus_continue_park');assert.equal(p.s.time,3);p.act('park_share');
+  for(let i=0;i<2;i++){p.act('park_materials');p.act('park_materials_back');}
+  assert.equal(p.s.time,2);assert.ok(p.s.availability.available.includes('park_plan_open'));
+  assert.equal(p.s.availability.blocked.park_group_open,'prerequisite');assert.equal(p.s.availability.blocked.park_hearing_open,'prerequisite');
+  completePlan(p);assert.equal(budgetUsed(p.s.park.saved),6);assert.equal(p.s.time,1);assert.equal(p.s.park.revision,1);assert.equal(p.s.primary,1);p.e.close();
+});
+
+test('ending without a plan requires confirmation; cancel and reload preserve resources and unknown outcomes',()=>{
+  const p=parkPlayer('procedural');assert.throws(()=>p.act('park_end_confirm'));
+  p.act('park_exit_open');assert.equal(p.s.phase,'park_exit');assert.equal(p.e.state(p.token).phase,'park_exit');assert.equal(p.s.time,3);
+  assert.equal(p.e.export(p.token).session.park_group_contribution,null);p.act('park_exit_back');assert.equal(p.s.phase,'park_hub');
+  assert.equal(p.s.time,3);assert.ok(p.s.availability.available.includes('park_plan_open'));
+  p.act('park_exit_open');p.act('park_end_confirm');assert.equal(p.e.export(p.token).session.park_group_contribution,0);assert.equal(p.s.park.completed,true);assert.equal(p.s.time,3);p.e.close();
 });
